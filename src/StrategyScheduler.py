@@ -1,10 +1,12 @@
 import logging
 import sklearn.linear_model as lm
+import sklearn.ensemble as es
 import numpy as np
 
 from MLiP_eval import StrategyScheduleScore
 
 class StrategyScheduler(object):
+    classifiers = []
     models = []
     attributeNames = []
     yNames = []
@@ -32,25 +34,38 @@ class StrategyScheduler(object):
                 tmp = (line.strip()).split('#')
 
                 X.append([float(x) for x in tmp[1].split(',')])
-                ys.append([float(x) if x != "-1" else self.failure_time for x in tmp[2].split(',')])
+                ys.append([float(x) for x in tmp[2].split(',')])
 
         X = np.matrix(X)
         ys = np.matrix(ys)
         
+        i = 0
         for y in ys.T:
-           y = y.A1
-           
-           model = lm.LinearRegression()
-           model.fit(X, y)
-           
-           self.models.append(model)
+            print i
+            i += 1
+            y = y.A1
+            mask = (y != -1.0)
+
+            classifier = es.RandomForestClassifier()
+            classifier.fit(X, mask)
+
+            self.classifiers.append(classifier)
+
+            model = lm.LinearRegression()
+            model.fit(X[mask], y[mask])
+
+            self.models.append(model)
            
         pass
     def predict(self,features):
         prediction_tuples = []
         for i in range(len(self.models)):
-            prediction_tuples.append((self.yNames[i], self.models[i].predict(features)))
+            if self.classifiers[i].predict(features):
+                prediction_tuples.append((self.yNames[i], self.models[i].predict(features)))
         prediction_tuples.sort(key=lambda x: x[1])
+        
+        if len(prediction_tuples) == 0: # Got no viable solution
+            return 'NewStrategy101164:150.0,NewStrategy101980:150.0' # Just try something
         
         time_left = self.total_time
         strategies = []
@@ -73,15 +88,16 @@ class StrategyScheduler(object):
         return ",".join(['%s:%f' % strategy for strategy in strategies])
 
 if __name__ == '__main__':
-    trainData = 'orig/MLiP_train' 
+    trainFile = 'orig/MLiP_train' 
+    testFile = 'orig/MLiP_train'
     mySchedule = 'My_MLiP_train_example_schedule'
     
     SS = StrategyScheduler()
-    SS.fit(trainData)
+    SS.fit(trainFile)
     
     # Get the test problems
     testData = []
-    with open(trainData,'r') as IS:
+    with open(testFile,'r') as IS:
         firstLine = True
         for line in IS:
             if firstLine:
@@ -99,7 +115,7 @@ if __name__ == '__main__':
             OS.write('%s#%s\n' % (pName,schedule))
             
     # Evaluate schedule 
-    Eval = StrategyScheduleScore(trainData)
+    Eval = StrategyScheduleScore(testFile)
     solved, score = Eval.eval_schedules(mySchedule)
     print 'Solved: %s %%' % solved                    
     print 'Score: %s %%  (%s / %s)' % (round(100*score/Eval.bestScore,4),score,Eval.bestScore)
