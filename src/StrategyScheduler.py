@@ -14,11 +14,13 @@ class StrategyScheduler(object):
     
     total_time = 300.0
     time_modifier = 1.20
+    max_strategy_count = 5
 
     def __init__(self):
         pass
     
-    def fit(self, filename):
+    def read(self, filename):
+        names = []
         X = []
         ys = []
     
@@ -34,11 +36,37 @@ class StrategyScheduler(object):
                     continue
                 tmp = (line.strip()).split('#')
 
+                names.append(tmp[0])
                 X.append([float(x) for x in tmp[1].split(',')])
                 ys.append([float(x) for x in tmp[2].split(',')])
 
         X = np.matrix(X)
         ys = np.matrix(ys)
+        
+        return X, ys, names
+    
+    def create_mask(self, X, ys):
+        mask = []
+        for i in range(len(ys)):
+            y = ys[i].A1
+
+            prediction_tuples = [(j, y[j]*self.time_modifier) for j in range(len(y)) if y[j] >= 0.0]
+            strategies = self.schedule(prediction_tuples)
+            
+            mask.extend([i for (i, time) in strategies])
+        
+        return np.unique(mask) # sorted & unique
+    
+    def fit(self, filename):
+        self.classifiers = []
+        self.models = []
+        
+        X, ys, names = self.read(filename)
+        strategy_mask = self.create_mask(X, ys)
+        
+        # make dataset consistent
+        self.yNames = [self.yNames[i] for i in strategy_mask]
+        ys = np.matrix([ys.T[i].A1 for i in strategy_mask]).T
         
         i = 0
         for y in ys.T:
@@ -62,21 +90,24 @@ class StrategyScheduler(object):
     def schedule(self, prediction_tuples):
         time_left = self.total_time
         strategies = []
-        for name, time in prediction_tuples:
-            if len(strategies) == 20:
+        
+        prediction_tuples.sort(key=lambda x: x[1])
+        for index, time in prediction_tuples: # index might be either a name or an integer
+            if len(strategies) == self.max_strategy_count:
                 break;
             
             if time < 0.0: # Faster than 0.0 sec should be a good strategy (note that -1 is filtered out above)
-                time = 1.0;
+                time = 0.1
         
             time = time * self.time_modifier
             
             if time_left < time:
                 if time_left == self.total_time:
-                    strategies.append((name, self.total_time)) # Try anyway
+                    strategies.append((index, time_left)) # Try anyway
+                    time_left = 0.0
                 break
             
-            strategies.append((name, time))
+            strategies.append((index, time))
             time_left -= time
         
         for i in range(len(strategies)):
@@ -84,19 +115,21 @@ class StrategyScheduler(object):
         
         return strategies
         
+    def schedule_to_string(self, strategies):
+        return ",".join(['%s:%f' % strategy for strategy in strategies])
+        
     def predict(self, features):
         prediction_tuples = []
         for i in range(len(self.models)):
             if self.classifiers[i].predict(features):
                 prediction_tuples.append((self.yNames[i], self.models[i].predict(features)))
-        prediction_tuples.sort(key=lambda x: x[1])
         
-        if len(prediction_tuples) == 0: # Got no viable solution
-            return 'NewStrategy101164:150.0,NewStrategy101980:150.0' # Just try something
-        
-        strategies = self.schedule(prediction_tuples)
+        if len(prediction_tuples) > 0: 
+            strategies = self.schedule(prediction_tuples)
+        else: # Got no viable solution
+            strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
     
-        return ",".join(['%s:%f' % strategy for strategy in strategies])
+        return self.schedule_to_string(strategies)
 
 if __name__ == '__main__':
     trainFile = 'orig/MLiP_train' 
@@ -104,6 +137,7 @@ if __name__ == '__main__':
     mySchedule = 'My_MLiP_train_example_schedule'
     
     SS = StrategyScheduler()
+    
     SS.fit(trainFile)
     
     # Get the test problems
@@ -124,7 +158,7 @@ if __name__ == '__main__':
         for pName,pFeatures in testData:
             schedule = SS.predict(pFeatures)
             OS.write('%s#%s\n' % (pName,schedule))
-            
+
     # Evaluate schedule 
     Eval = StrategyScheduleScore(testFile)
     solved, score = Eval.eval_schedules(mySchedule)
