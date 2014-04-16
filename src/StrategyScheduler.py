@@ -12,6 +12,8 @@ class StrategyScheduler(object):
     attributeNames = []
     yNames = []
     
+    weights = []
+    
     total_time = 300.0
     time_modifier = 1.20
     max_strategy_count = 5
@@ -47,6 +49,17 @@ class StrategyScheduler(object):
     
     def create_mask(self, X, ys):
         mask = []
+
+        
+        self.weights = np.zeros(len(ys[0].A1) + 1)
+        for i in range(len(ys)):
+            y = ys[i].A1
+            for j in range(len(y)):
+                if y[j] >= 0.0:
+                    self.weights[j] += 1
+        self.weights = np.max(self.weights) / self.weights
+        self.weights[len(self.weights) - 1] = 1
+        
         for i in range(len(ys)):
             y = ys[i].A1
 
@@ -89,9 +102,9 @@ class StrategyScheduler(object):
     
     def schedule(self, prediction_tuples):
         time_left = self.total_time
-        strategies = []
+        strategies = [];
         
-        prediction_tuples.sort(key=lambda x: x[1])
+        prediction_tuples.sort(key=lambda x: x[1] * self.weights[x[0])
         for index, time in prediction_tuples: # index might be either a name or an integer
             if len(strategies) == self.max_strategy_count:
                 break;
