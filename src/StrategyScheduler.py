@@ -9,13 +9,14 @@ class StrategyScheduler(object):
     yNames = []
     
     total_time = 300.0
-    time_modifier = 1.20
-    max_strategy_count = 5
+    time_modifier = 1.10
+    max_strategy_count = 20
 
     def __init__(self):
         pass
     
-    def read(self, filename):
+    @staticmethod
+    def read(filename):
         X = []
         ys = []
         XNames = []
@@ -54,7 +55,7 @@ class StrategyScheduler(object):
         return np.unique(mask) # sorted & unique
     
     def fit_file(self, filename):
-        X, ys, XNames, yNames = self.read(filename)
+        X, ys, XNames, yNames = StrategyScheduler.read(filename)
         self.fit(X, ys, yNames);
         pass
     
@@ -69,10 +70,7 @@ class StrategyScheduler(object):
         self.yNames = [self.yNames[i] for i in strategy_mask]
         ys = np.matrix([ys.T[i].A1 for i in strategy_mask]).T
         
-        i = 0
         for y in ys.T:
-            print i
-            i += 1
             y = y.A1
             mask = (y != -1.0)
 
@@ -97,8 +95,8 @@ class StrategyScheduler(object):
             if len(strategies) == self.max_strategy_count:
                 break;
             
-            if time < 0.0: # Faster than 0.0 sec should be a good strategy (note that -1 is filtered out above)
-                time = 0.1
+            if time < 0.5: # Faster than 0.0 sec should be a good strategy (note that -1 is filtered out above)
+                time = 0.5
         
             time = time * self.time_modifier
             
