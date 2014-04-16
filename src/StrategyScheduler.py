@@ -1,15 +1,11 @@
-import logging
 import sklearn.linear_model as lm
 import sklearn.ensemble as es
 import numpy as np
-
-from MLiP_eval import StrategyScheduleScore
+import math as math
 
 class StrategyScheduler(object):
     classifiers = []
     models = []
-    
-    attributeNames = []
     yNames = []
     
     total_time = 300.0
@@ -20,30 +16,30 @@ class StrategyScheduler(object):
         pass
     
     def read(self, filename):
-        names = []
         X = []
         ys = []
+        XNames = []
+        yNames = []
     
         with open(filename,'r') as IS:
             firstLine = True
             for line in IS:
                 if firstLine:
                     tmp = (line.strip()).split('#')
-                    self.attributeNames = tmp[1].split(',')
-                    self.yNames = tmp[2].split(',')
+                    yNames = tmp[2].split(',')
                 
                     firstLine = False
                     continue
                 tmp = (line.strip()).split('#')
 
-                names.append(tmp[0])
+                XNames.append(tmp[0])
                 X.append([float(x) for x in tmp[1].split(',')])
                 ys.append([float(x) for x in tmp[2].split(',')])
 
         X = np.matrix(X)
         ys = np.matrix(ys)
         
-        return X, ys, names
+        return X, ys, XNames, yNames
     
     def create_mask(self, X, ys):
         mask = []
@@ -57,11 +53,16 @@ class StrategyScheduler(object):
         
         return np.unique(mask) # sorted & unique
     
-    def fit(self, filename):
+    def fit_file(self, filename):
+        X, ys, XNames, yNames = self.read(filename)
+        self.fit(X, ys, yNames);
+        pass
+    
+    def fit(self, X, ys, yNames):
         self.classifiers = []
         self.models = []
+        self.yNames = yNames
         
-        X, ys, names = self.read(filename)
         strategy_mask = self.create_mask(X, ys)
         
         # make dataset consistent
@@ -130,37 +131,3 @@ class StrategyScheduler(object):
             strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
     
         return self.schedule_to_string(strategies)
-
-if __name__ == '__main__':
-    trainFile = 'orig/MLiP_train' 
-    testFile = 'orig/MLiP_train'
-    mySchedule = 'My_MLiP_train_example_schedule'
-    
-    SS = StrategyScheduler()
-    
-    SS.fit(trainFile)
-    
-    # Get the test problems
-    testData = []
-    with open(testFile,'r') as IS:
-        firstLine = True
-        for line in IS:
-            if firstLine:
-                firstLine = False
-                continue
-            tmp = (line.strip()).split('#')
-            pName = tmp[0]
-            pFeatures = [float(x) for x in tmp[1].split(',')]
-            testData.append((pName,pFeatures))
-    
-    # Create schedules
-    with open(mySchedule,'w') as OS:
-        for pName,pFeatures in testData:
-            schedule = SS.predict(pFeatures)
-            OS.write('%s#%s\n' % (pName,schedule))
-
-    # Evaluate schedule 
-    Eval = StrategyScheduleScore(testFile)
-    solved, score = Eval.eval_schedules(mySchedule)
-    print 'Solved: %s %%' % solved                    
-    print 'Score: %s %%  (%s / %s)' % (round(100*score/Eval.bestScore,4),score,Eval.bestScore)
