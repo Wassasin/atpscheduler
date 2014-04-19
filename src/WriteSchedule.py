@@ -9,24 +9,14 @@ if __name__ == '__main__':
     SS = StrategyScheduler()
     SS.fit_file(trainFile)
     
-    # Get the test problems
-    testData = []
-    with open(testFile,'r') as IS:
-        firstLine = True
-        for line in IS:
-            if firstLine:
-                firstLine = False
-                continue
-            tmp = (line.strip()).split('#')
-            pName = tmp[0]
-            pFeatures = [float(x) for x in tmp[1].split(',')]
-            testData.append((pName,pFeatures))
+    X, XNames = StrategyScheduler.read(testFile, False)
+    N,M = X.shape
     
     # Create schedules
     with open(mySchedule,'w') as OS:
-        for pName,pFeatures in testData:
-            schedule = SS.predict(pFeatures)
-            OS.write('%s#%s\n' % (pName,schedule))
+        for i in range(N):
+            schedule = SS.predict(X[i])
+            OS.write('%s#%s\n' % (XNames[i], schedule))
 
     # Evaluate schedule 
     Eval = StrategyScheduleScore(testFile)

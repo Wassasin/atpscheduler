@@ -18,7 +18,7 @@ class StrategyScheduler(object):
         pass
 
     @staticmethod
-    def read(filename):
+    def read(filename, include_train=True):
         X = []
         ys = []
         XNames = []
@@ -28,20 +28,27 @@ class StrategyScheduler(object):
             firstLine = True
             for line in IS:
                 if firstLine:
-                    tmp = (line.strip()).split('#')
-                    yNames = tmp[2].split(',')
+                    if include_train:
+                        tmp = (line.strip()).split('#')
+                        yNames = tmp[2].split(',')
                     firstLine = False
                     continue
+                    
                 tmp = (line.strip()).split('#')
 
                 XNames.append(tmp[0])
                 X.append([float(x) for x in tmp[1].split(',')])
-                ys.append([float(x) for x in tmp[2].split(',')])
+                
+                if include_train:
+                    ys.append([float(x) for x in tmp[2].split(',')])
 
         X = np.matrix(X)
-        ys = np.matrix(ys)
         
-        return X, ys, XNames, yNames
+        if include_train:
+            ys = np.matrix(ys)
+            return X, ys, XNames, yNames
+        else:
+            return X, XNames
 
     def create_mask(self, X, ys):
         mask = []
