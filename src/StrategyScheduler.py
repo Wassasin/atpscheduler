@@ -52,7 +52,8 @@ class StrategyScheduler(object):
             for j in range(len(y)):
                 if y[j] >= 0.0:
                     self.weights[j] += 1
-        self.weights = np.max(self.weights) / self.weights
+       
+        self.weights = self.weights / np.max(self.weights)
 
         for i in range(len(ys)):
             y = ys[i].A1
@@ -100,7 +101,7 @@ class StrategyScheduler(object):
         time_left = self.total_time
         strategies = []
 
-        prediction_tuples.sort(key=lambda x: x[1] * (x[2] * self.weightWeight))
+        prediction_tuples.sort(key=lambda x: -1.0 * math.log10(1.0 / (1.0 - x[2])) / (x[1] / self.total_time) if x[2] < 1.0 else float('-inf')) # Compute attribution to chance of success (ask Wouter for theory)
         for index, time, weight in prediction_tuples: # index might be either a name or an integer
             if len(strategies) == self.max_strategy_count:
                 break;
@@ -110,14 +111,13 @@ class StrategyScheduler(object):
 
             time = time * self.time_modifier
 
-            if time_left < time:
-                if time_left == self.total_time:
-                    strategies.append((index, time_left)) # Try anyway
-                    time_left = 0.0
-                break
+            if time_left < time: # If does not fit, try next in line
+               continue
 
             strategies.append((index, time))
             time_left -= time
+        
+        strategies.sort(key=lambda x: x[1])
 
         for i in range(len(strategies)):
             strategies[i] = (strategies[i][0], strategies[i][1] + time_left / len(strategies))
