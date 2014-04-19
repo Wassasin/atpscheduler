@@ -6,29 +6,30 @@ import math as math
 class StrategyScheduler(object):
     classifiers = []
     models = []
+
     yNames = []
-    
+
     total_time = 300.0
-    time_modifier = 1.10
+    time_modifier = 1.20
     max_strategy_count = 20
+    weightWeight = 1.3  # the weight for the weight in relation to the time
 
     def __init__(self):
         pass
-    
+
     @staticmethod
     def read(filename):
         X = []
         ys = []
         XNames = []
         yNames = []
-    
+
         with open(filename,'r') as IS:
             firstLine = True
             for line in IS:
                 if firstLine:
                     tmp = (line.strip()).split('#')
                     yNames = tmp[2].split(',')
-                
                     firstLine = False
                     continue
                 tmp = (line.strip()).split('#')
@@ -41,19 +42,28 @@ class StrategyScheduler(object):
         ys = np.matrix(ys)
         
         return X, ys, XNames, yNames
-    
+
     def create_mask(self, X, ys):
         mask = []
+
+        self.weights = np.zeros(len(ys[0].A1))
+        for i in range(len(ys)):
+            y = ys[i].A1
+            for j in range(len(y)):
+                if y[j] >= 0.0:
+                    self.weights[j] += 1
+        self.weights = np.max(self.weights) / self.weights
+
         for i in range(len(ys)):
             y = ys[i].A1
 
-            prediction_tuples = [(j, y[j]*self.time_modifier) for j in range(len(y)) if y[j] >= 0.0]
+            prediction_tuples = [(j, y[j]*self.time_modifier, self.weights[j]) for j in range(len(y)) if y[j] >= 0.0]
             strategies = self.schedule(prediction_tuples)
-            
+
             mask.extend([i for (i, time) in strategies])
-        
+
         return np.unique(mask) # sorted & unique
-    
+
     def fit_file(self, filename):
         X, ys, XNames, yNames = StrategyScheduler.read(filename)
         self.fit(X, ys, yNames);
@@ -63,13 +73,13 @@ class StrategyScheduler(object):
         self.classifiers = []
         self.models = []
         self.yNames = yNames
-        
+
         strategy_mask = self.create_mask(X, ys)
-        
+
         # make dataset consistent
         self.yNames = [self.yNames[i] for i in strategy_mask]
         ys = np.matrix([ys.T[i].A1 for i in strategy_mask]).T
-        
+
         for yt in ys.T:
             yt = yt.A1
             mask = (yt != -1.0)
@@ -83,49 +93,49 @@ class StrategyScheduler(object):
             model.fit(X[mask], yt[mask])
 
             self.models.append(model)
-           
+
         pass
-    
+
     def schedule(self, prediction_tuples):
         time_left = self.total_time
         strategies = []
-        
-        prediction_tuples.sort(key=lambda x: x[1])
-        for index, time in prediction_tuples: # index might be either a name or an integer
+
+        prediction_tuples.sort(key=lambda x: x[1] * (x[2] * self.weightWeight))
+        for index, time, weight in prediction_tuples: # index might be either a name or an integer
             if len(strategies) == self.max_strategy_count:
                 break;
-            
+
             if time < 0.5: # Faster than 0.0 sec should be a good strategy (note that -1 is filtered out above)
                 time = 0.5
-        
+
             time = time * self.time_modifier
-            
+
             if time_left < time:
                 if time_left == self.total_time:
                     strategies.append((index, time_left)) # Try anyway
                     time_left = 0.0
                 break
-            
+
             strategies.append((index, time))
             time_left -= time
-        
+
         for i in range(len(strategies)):
             strategies[i] = (strategies[i][0], strategies[i][1] + time_left / len(strategies))
-        
+
         return strategies
-        
+
     def schedule_to_string(self, strategies):
         return ",".join(['%s:%f' % strategy for strategy in strategies])
-        
+
     def predict(self, features):
         prediction_tuples = []
         for i in range(len(self.models)):
             if self.classifiers[i].predict(features):
-                prediction_tuples.append((self.yNames[i], self.models[i].predict(features)))
-        
-        if len(prediction_tuples) > 0: 
+                prediction_tuples.append((self.yNames[i], self.models[i].predict(features), self.weights[i]))
+
+        if len(prediction_tuples) > 0:
             strategies = self.schedule(prediction_tuples)
         else: # Got no viable solution
             strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
-    
+
         return self.schedule_to_string(strategies)
