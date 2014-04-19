@@ -70,9 +70,9 @@ class StrategyScheduler(object):
         self.yNames = [self.yNames[i] for i in strategy_mask]
         ys = np.matrix([ys.T[i].A1 for i in strategy_mask]).T
         
-        for y in ys.T:
-            y = y.A1
-            mask = (y != -1.0)
+        for yt in ys.T:
+            yt = yt.A1
+            mask = (yt != -1.0)
 
             classifier = es.RandomForestClassifier()
             classifier.fit(X, mask)
@@ -80,7 +80,7 @@ class StrategyScheduler(object):
             self.classifiers.append(classifier)
 
             model = lm.LinearRegression()
-            model.fit(X[mask], y[mask])
+            model.fit(X[mask], yt[mask])
 
             self.models.append(model)
            
