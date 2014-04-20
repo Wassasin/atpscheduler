@@ -1,4 +1,4 @@
-import sklearn.linear_model as lm
+import sklearn.svm as svm
 import sklearn.ensemble as es
 import numpy as np
 import math as math
@@ -7,12 +7,13 @@ class StrategyScheduler(object):
     classifiers = []
     models = []
 
-    yNames = []
+    weights = []
+    strategy_mask = []
 
     total_time = 300.0
     time_modifier = 1.20
-    max_strategy_count = 20
-    weightWeight = 1.3  # the weight for the weight in relation to the time
+    prob_threshold = 0.70
+    max_strategy_count = 10
 
     def __init__(self):
         pass
@@ -50,27 +51,32 @@ class StrategyScheduler(object):
         else:
             return X, XNames
 
-    def create_mask(self, X, ys):
-        mask = []
-
-        self.weights = np.zeros(len(ys[0].A1))
+    def compute_weights(self, X, ys):
+        weights = np.zeros(len(ys[0].A1))
         for i in range(len(ys)):
             y = ys[i].A1
             for j in range(len(y)):
                 if y[j] >= 0.0:
-                    self.weights[j] += 1
+                    weights[j] += 1
        
-        self.weights = self.weights / np.max(self.weights)
+        return weights / np.max(weights)
+
+    def create_mask(self, X, ys):
+        mask = []
 
         for i in range(len(ys)):
             y = ys[i].A1
 
-            prediction_tuples = [(j, y[j]*self.time_modifier, self.weights[j]) for j in range(len(y)) if y[j] >= 0.0]
+            prediction_tuples = [(j, y[j], self.weights[j]) for j in range(len(y)) if y[j] >= 0.0]
             strategies = self.schedule(prediction_tuples)
 
-            mask.extend([i for (i, time) in strategies])
+            mask.extend([j for (j, time) in strategies])
 
-        return np.unique(mask) # sorted & unique
+        result = [True for i in range(ys.shape[1])]
+        #for i in mask:
+        #    result[i] = True
+
+        return result # sorted & unique
 
     def fit_file(self, filename):
         X, ys, XNames, yNames = StrategyScheduler.read(filename)
@@ -82,34 +88,40 @@ class StrategyScheduler(object):
         self.models = []
         self.yNames = yNames
 
-        strategy_mask = self.create_mask(X, ys)
+        self.weights = self.compute_weights(X, ys)
+        self.strategy_mask = self.create_mask(X, ys)
 
-        # make dataset consistent
-        self.yNames = [self.yNames[i] for i in strategy_mask]
-        ys = np.matrix([ys.T[i].A1 for i in strategy_mask]).T
-
-        for yt in ys.T:
-            yt = yt.A1
+        for i in range(len(self.strategy_mask)):
+            if not self.strategy_mask:
+                self.classifiers.append(None)
+                self.models.append(None)
+                continue
+            
+            yt = ys.T[i].A1
             mask = (yt != -1.0)
 
-            classifier = es.RandomForestClassifier()
+            classifier = es.ExtraTreesClassifier()
             classifier.fit(X, mask)
 
             self.classifiers.append(classifier)
 
-            model = lm.LinearRegression()
+            model = es.ExtraTreesRegressor()
             model.fit(X[mask], yt[mask])
 
             self.models.append(model)
-
         pass
 
     def schedule(self, prediction_tuples):
         time_left = self.total_time
         strategies = []
+        
+        perfect_tuples = filter(lambda x: x[2] == 1.0, prediction_tuples)
+        imperfect_tuples = filter(lambda x: x[2] < 1.0, prediction_tuples)
 
-        prediction_tuples.sort(key=lambda x: -1.0 * math.log10(1.0 / (1.0 - x[2])) / (x[1] / self.total_time) if x[2] < 1.0 else float('-inf')) # Compute attribution to chance of success (ask Wouter for theory)
-        for index, time, weight in prediction_tuples: # index might be either a name or an integer
+        perfect_tuples.sort(key=lambda x: x[1]) # If chance is 1.0, sort on time
+        imperfect_tuples.sort(key=lambda x: -1.0 * math.log10(1.0 / (1.0 - x[2])) / (x[1] / self.total_time)) # Compute attribution to chance of success (ask Wouter for theory)
+
+        for index, time, weight in (perfect_tuples + imperfect_tuples): # index might be either a name or an integer
             if len(strategies) == self.max_strategy_count:
                 break;
 
@@ -136,19 +148,20 @@ class StrategyScheduler(object):
 
     def predict(self, features):
         prediction_tuples = []
-        for i in range(len(self.models)):
+        for i in np.where(self.strategy_mask)[0]:
             falseProb, trueProb = self.classifiers[i].predict_proba(features)[0] # Classes are ordered by arithmetical order
-            if trueProb > 0.5:
-                prediction_tuples.append((self.yNames[i], self.models[i].predict(features), trueProb * self.weights[i]))
+            if trueProb >= self.prob_threshold:
+                prediction_tuples.append((self.yNames[i], self.models[i].predict(features), self.weights[i] * trueProb))
 
         if len(prediction_tuples) == 0: # Got no viable solution
-            for i in range(len(self.weights)):
+            for i in np.where(self.strategy_mask)[0]:
                 prediction_tuples.append((self.yNames[i], self.models[i].predict(features), self.weights[i]))
-            
+        
         strategies = self.schedule(prediction_tuples)
         
-        #    strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
-
+        if len(strategies) == 0:
+            strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
+        
         return self.schedule_to_string(strategies)
     
     def analyze(self, X, ys):
@@ -160,12 +173,16 @@ class StrategyScheduler(object):
             y = np.array(ys[i].A1)
             
             prediction_tuples = []
-            for j in range(len(self.models)):
-                if self.classifiers[j].predict(features):
+            for j in np.where(self.strategy_mask)[0]:
+                falseProb, trueProb = self.classifiers[j].predict_proba(features)[0] # Classes are ordered by arithmetical order
+                if trueProb >= self.prob_threshold:
+                    prediction_tuples.append((j, self.models[j].predict(features), self.weights[j] * trueProb))
+
+            if len(prediction_tuples) == 0: # Got no viable solution
+                for j in np.where(self.strategy_mask)[0]:
                     prediction_tuples.append((j, self.models[j].predict(features), self.weights[j]))
             
-            if len(prediction_tuples) > 0:
-                strategies = self.schedule(prediction_tuples)
+            strategies = self.schedule(prediction_tuples)
             
             current_time = 0.0
             success = False
@@ -176,13 +193,13 @@ class StrategyScheduler(object):
                     continue
                 
                 if time < y[j]:
-                    print "Aborted too soon! (%f, %f)" % (y[j] - time, y[j])
+                    print "Aborted too soon! (diff %f, length %f)" % (y[j] - time, y[j])
                     continue
                 else:
-                    print "Success (%f, %f, %f)" % (time, time - y[j], current_time - time)
+                    print "Success (length %f, diff %f, total %f)" % (time, time - y[j], current_time - time)
                     success = True
                     break
                 
             if not success:
-                print "Failure (options: %i, %i)" % (len(np.argwhere(y != -1)), len(strategies))
+                print "Failure (options: total %i, attempted %i)" % (len(np.argwhere(y != -1)), len(strategies))
         pass
