@@ -3,6 +3,9 @@ import sklearn.ensemble as es
 import numpy as np
 import math as math
 
+def negate_list(xs):
+    return [not x for x in xs]
+
 class StrategyScheduler(object):
     classifiers = []
     models = []
@@ -45,33 +48,7 @@ class StrategyScheduler(object):
 
         X = np.matrix(X)
         
-        # Remove outliers
-        # Before: 97.31% / 94.9541%
-        # After (.any()): 60.75% / 54.1607% :(:(:(
-        # After (.all()): doesn't seem to throw anything away
-        # upperBounds = np.matrix([1.5*1e4,  0.75*1e6, 0.75*1e6, 1e6, 
-#                                  0.3*1e7,  1e3,      0.3*1e6,  0.3*1e4, 
-#                                  0.75*1e6, 0.5*1e5,  2.5*1e3,  0.3*1e6,
-#                                  1e3,      0.2*1e6,  0.2*1e6,  1e10,
-#                                  1e10,     3*1e1,    1e1,      3*1e4, 
-#                                  1e10,     1.5])
-#         deleteRows = []
-#         N,M=X.shape
-#         for i in range(0, N):
-#             if((X[i,:] > upperBounds).all()):
-#                 deleteRows.append(i)
-#                 
-#         X = np.delete(X, deleteRows, axis=0)
-        #visualizeData(data)
-        
-        # Remove boring attributes
-        # Before: 97.31% / 94.9541%
-        # After : 94.86% / 92.0505% :(
-        X = X[:,[10, 15, 16, 17, 18, 19, 20, 21]]
-        #visualizeData(data)
-        
         if include_train:
-            # ys = np.delete(np.matrix(ys), deleteRows, axis=0)
             ys = np.matrix(ys)
             return X, ys, XNames, yNames
         else:
@@ -98,11 +75,30 @@ class StrategyScheduler(object):
 
             mask.extend([j for (j, time) in strategies])
 
-        result = [True for i in range(ys.shape[1])]
-        #for i in mask:
-        #    result[i] = True
+        result = [False for i in range(ys.shape[1])]
+        for i in mask:
+            result[i] = True
 
         return result # sorted & unique
+
+    def find_outliers(self, X):
+        upperBounds = np.matrix([1.5*1e4,  1.0*1e5, 0.75*1e6, 1e6, 
+                                 0.3*1e7,  1e3,      0.3*1e6,  0.3*1e4, 
+                                 0.75*1e6, 0.5*1e5,  2.5*1e3,  0.3*1e6,
+                                 1e3,      0.2*1e6,  0.2*1e6,  1e10,
+                                 1e10,     3*1e1,    1e1,      3*1e4, 
+                                 1e10,     1.5])
+        deleteRows = []
+        N,M=X.shape
+        for i in range(0, N):
+            if((X[i,:] > upperBounds).any()):
+                deleteRows.append(i)
+        
+        result = [True for i in range(N)]
+        for i in deleteRows:
+            result[i] = False
+        
+        return result
 
     def fit_file(self, filename):
         X, ys, XNames, yNames = StrategyScheduler.read(filename)
@@ -115,7 +111,17 @@ class StrategyScheduler(object):
         self.yNames = yNames
 
         self.weights = self.compute_weights(X, ys)
-        self.strategy_mask = self.create_mask(X, ys)
+        
+        # Strategy mask does not work at all
+        #self.strategy_mask = self.create_mask(X, ys)
+        self.strategy_mask = [True for i in range(ys.shape[1])]
+        
+        # Outlier finding also does not work OK
+        #outlier_mask = self.find_outliers(X)
+        outlier_mask = [True for i in range(ys.shape[1])]
+        
+        X = np.delete(X, np.where(negate_list(outlier_mask)), axis=0)
+        ys = np.delete(ys, np.where(negate_list(outlier_mask)), axis=0)
 
         for i in range(len(self.strategy_mask)):
             if not self.strategy_mask:
@@ -124,16 +130,14 @@ class StrategyScheduler(object):
                 continue
             
             yt = ys.T[i].A1
-            mask = (yt != -1.0)
-
+            success_mask = (yt != -1.0)
+            
             classifier = es.ExtraTreesClassifier()
-            classifier.fit(X, mask)
-
+            classifier.fit(X, success_mask)
             self.classifiers.append(classifier)
 
             model = es.ExtraTreesRegressor()
-            model.fit(X[mask], yt[mask])
-
+            model.fit(X[success_mask], yt[success_mask])
             self.models.append(model)
         pass
 

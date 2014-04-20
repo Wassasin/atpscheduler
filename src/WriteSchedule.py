@@ -3,7 +3,7 @@ from MLiP_eval import StrategyScheduleScore
 
 if __name__ == '__main__':
     trainFile = 'orig/MLiP_train' 
-    testFile = 'orig/MLiP_test_features'
+    testFile = 'orig/MLiP_train'
     mySchedule = 'My_MLiP_train_example_schedule'
     
     SS = StrategyScheduler()
