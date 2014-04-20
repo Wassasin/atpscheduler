@@ -137,12 +137,52 @@ class StrategyScheduler(object):
     def predict(self, features):
         prediction_tuples = []
         for i in range(len(self.models)):
-            if self.classifiers[i].predict(features):
-                prediction_tuples.append((self.yNames[i], self.models[i].predict(features), self.weights[i]))
+            falseProb, trueProb = self.classifiers[i].predict_proba(features)[0] # Classes are ordered by arithmetical order
+            if trueProb > 0.5:
+                prediction_tuples.append((self.yNames[i], self.models[i].predict(features), trueProb * self.weights[i]))
 
-        if len(prediction_tuples) > 0:
-            strategies = self.schedule(prediction_tuples)
-        else: # Got no viable solution
-            strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
+        if len(prediction_tuples) == 0: # Got no viable solution
+            for i in range(len(self.weights)):
+                prediction_tuples.append((self.yNames[i], self.models[i].predict(features), self.weights[i]))
+            
+        strategies = self.schedule(prediction_tuples)
+        
+        #    strategies = [('NewStrategy101164', 150.0), ('NewStrategy101980', 150.0)] # Just try something
 
         return self.schedule_to_string(strategies)
+    
+    def analyze(self, X, ys):
+        N,M = X.shape
+        
+        for i in range(N):
+            print "%i:" % i
+            features = np.array(X[i].A1)
+            y = np.array(ys[i].A1)
+            
+            prediction_tuples = []
+            for j in range(len(self.models)):
+                if self.classifiers[j].predict(features):
+                    prediction_tuples.append((j, self.models[j].predict(features), self.weights[j]))
+            
+            if len(prediction_tuples) > 0:
+                strategies = self.schedule(prediction_tuples)
+            
+            current_time = 0.0
+            success = False
+            for j, time in strategies:
+                current_time += time
+            
+                if y[j] == -1:
+                    continue
+                
+                if time < y[j]:
+                    print "Aborted too soon! (%f, %f)" % (y[j] - time, y[j])
+                    continue
+                else:
+                    print "Success (%f, %f, %f)" % (time, time - y[j], current_time - time)
+                    success = True
+                    break
+                
+            if not success:
+                print "Failure (options: %i, %i)" % (len(np.argwhere(y != -1)), len(strategies))
+        pass
