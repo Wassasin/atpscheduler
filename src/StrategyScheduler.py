@@ -45,7 +45,33 @@ class StrategyScheduler(object):
 
         X = np.matrix(X)
         
+        # Remove outliers
+        # Before: 97.31% / 94.9541%
+        # After (.any()): 60.75% / 54.1607% :(:(:(
+        # After (.all()): doesn't seem to throw anything away
+        # upperBounds = np.matrix([1.5*1e4,  0.75*1e6, 0.75*1e6, 1e6, 
+#                                  0.3*1e7,  1e3,      0.3*1e6,  0.3*1e4, 
+#                                  0.75*1e6, 0.5*1e5,  2.5*1e3,  0.3*1e6,
+#                                  1e3,      0.2*1e6,  0.2*1e6,  1e10,
+#                                  1e10,     3*1e1,    1e1,      3*1e4, 
+#                                  1e10,     1.5])
+#         deleteRows = []
+#         N,M=X.shape
+#         for i in range(0, N):
+#             if((X[i,:] > upperBounds).all()):
+#                 deleteRows.append(i)
+#                 
+#         X = np.delete(X, deleteRows, axis=0)
+        #visualizeData(data)
+        
+        # Remove boring attributes
+        # Before: 97.31% / 94.9541%
+        # After : 94.86% / 92.0505% :(
+        X = X[:,[10, 15, 16, 17, 18, 19, 20, 21]]
+        #visualizeData(data)
+        
         if include_train:
+            # ys = np.delete(np.matrix(ys), deleteRows, axis=0)
             ys = np.matrix(ys)
             return X, ys, XNames, yNames
         else:
