@@ -1,3 +1,4 @@
+import sklearn.linear_model as lm
 import sklearn.ensemble as es
 import numpy as np
 import math as math
@@ -15,7 +16,7 @@ class StrategyScheduler(object):
     total_time = 300.0
     time_modifier = 1.20
     prob_threshold = 0.70
-    max_strategy_count = 10
+    max_strategy_count = 20
 
     def __init__(self):
         pass
@@ -131,11 +132,11 @@ class StrategyScheduler(object):
             yt = ys.T[i].A1
             success_mask = (yt != -1.0)
             
-            classifier = es.ExtraTreesClassifier()
+            classifier = es.RandomForestClassifier()
             classifier.fit(X, success_mask)
             self.classifiers.append(classifier)
 
-            model = es.ExtraTreesRegressor()
+            model = lm.LinearRegression()
             model.fit(X[success_mask], yt[success_mask])
             self.models.append(model)
         pass
